@@ -33,6 +33,8 @@ WB_INDICATORS = {
     "inflation": "FP.CPI.TOTL.ZG",               # CPI通胀 %
     "unemployment": "SL.UEM.TOTL.ZS",            # 失业率 %（占总劳动力，ILO口径）
     "youth_unemployment": "SL.UEM.1524.ZS",      # 15-24岁青年失业率 %
+    "working_age_share": "SP.POP.1564.TO.ZS",    # 15-64岁人口占比 %（分群画像证据）
+    "elderly_share": "SP.POP.65UP.TO.ZS",        # 65岁以上人口占比 %（分群画像证据）
 }
 
 
