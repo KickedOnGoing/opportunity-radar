@@ -64,6 +64,11 @@
     <div class="hint">得分 = 宏观动能 × 抗萧条β × 需求趋势。解读方式：高分机会 = <b>钱在变多的市场 × 萧条里反而涨的品类</b>。仅是筛选起点，动手前仍需 1688 供给端查重与预售页验证。</div>
   </div>
   <div class="card full">
+    <h2>🩺 民生温度计 · 生产型硬数据（真实行政记录，非调查问卷）</h2>
+    <table id="hard"></table>
+    <div class="hint">与GDP/CPI等"汇总统计口径"不同，下面每个数都来自真实个体事件（失业金理赔单）或雇主税务申报记录，是更难注水的生产型数据。美国口径先行为示范（周更），可在 app/sources.py 的 FRED_SERIES 按同一接口扩展各国序列。</div>
+  </div>
+  <div class="card full">
     <h2>🔍 证据链与数据口径（分数怎么来的，以及每个数的局限）</h2>
     <table id="evidence"></table>
   </div>
@@ -103,6 +108,19 @@ function renderOpp(d) {
       `<tr><td>${i + 1}</td><td><b>${NAMES[o.country] || o.country}</b> × ${o.category} <span class="badge">防御型β=${o.beta}</span></td>`
       + `${cell(o.score, "score")}${cell(o.macro)}${cell(o.demand)}${cell(o.beta)}</tr>`
     ).join("");
+}
+
+function renderHard(d) {
+  if (!d.hard_data || !Object.keys(d.hard_data).length) return;
+  document.getElementById("hard").innerHTML =
+    "<tr><th>指标</th><th>最新值</th><th>更新日期</th><th>频率</th><th>近4周 vs 12周前</th><th>读法</th></tr>" +
+    Object.values(d.hard_data).map(h => {
+      const good = h.good === "down" ? -1 : 1;
+      const healthy = h.trend_pct * good >= 0;
+      const trendTxt = (h.trend_pct > 0 ? "+" : "") + h.trend_pct + "%";
+      return `<tr><td><b>${h.name}</b></td><td class="score">${h.latest.toLocaleString()} ${h.unit}</td><td>${h.date}</td><td>${h.freq}</td>`
+        + `<td class="${healthy ? "beta-high" : "beta-low"}">${trendTxt}</td><td style="color:#68738a">${h.why}</td></tr>`;
+    }).join("");
 }
 
 function renderEvidence(d) {
@@ -179,7 +197,7 @@ async function load(manual) {
     setTimeout(() => location.reload(), 30000);
     return;
   }
-  renderMacro(d); renderCat(d); renderOpp(d); renderEvidence(d); renderChart(d);
+  renderMacro(d); renderCat(d); renderOpp(d); renderHard(d); renderEvidence(d); renderChart(d);
 }
 load(false);
 </script>
