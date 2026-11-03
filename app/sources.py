@@ -90,13 +90,71 @@ def fetch_oecd_cci() -> dict[str, list[dict]]:
     return out
 
 
+def fetch_fred(series_id: str, years: int = 2) -> list[dict]:
+    """美联储经济数据库 FRED（fredgraph.csv 免费无key）。
+    生产型硬数据：行政理赔/税务记录，不是调查问卷，比官方统计更难注水。
+    返回 [{t: 'YYYY-MM-DD', v: float}, ...]"""
+    url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}"
+    try:
+        import csv, io
+        text = _get(url, timeout=30, retries=3).text
+        rows = []
+        for r in csv.DictReader(io.StringIO(text)):
+            if not r.get("observation_date"):
+                continue
+            try:
+                rows.append({"t": r["observation_date"], "v": float(r[series_id])})
+            except (ValueError, KeyError, TypeError):
+                continue
+        return rows[-years * 52:] if rows else []
+    except Exception as e:
+        print(f"[fred] {series_id} 获取失败: {e}")
+        return []
+
+
+# 生产型硬数据序列定义（FRED）：
+# 均为行政流程数据或税务记录，非抽样调查。美国口径先行为示范，
+# 其他市场此类周更开放数据源有限（可在 sources.py 中按同一接口扩展各国序列）
+FRED_SERIES = {
+    "icsa": {"id": "ICSA", "name": "每周初请失业金人数（美国）",
+             "freq": "周更", "unit": "人",
+             "why": "每一份申请都是真实个体的行政理赔事件，比失业率更快更硬",
+             "good": "down"},  # 下降=就业走强
+    "ccnsa": {"id": "CCNSA", "name": "持续申领失业金人数（美国）",
+              "freq": "周更", "unit": "人",
+              "why": "长期申领池的真实存量，反映就业市场粘性",
+              "good": "down"},
+    "payems": {"id": "PAYEMS", "name": "非农就业总人数（美国）",
+               "freq": "月更", "unit": "千人",
+               "why": "数据源自失业保险税记录（雇主申报），行政口径而非问卷",
+               "good": "up"},
+}
+
+
 def _get(url: str, params: dict | None = None, timeout: int = 25, retries: int = 2):
-    """带重试的 GET。"""
+    """带重试的 GET；requests 被对端重置时自动降级为 curl 子进程（兼容性强）。"""
+    import subprocess
     for i in range(retries + 1):
         try:
             return requests.get(url, params=params, headers=UA, timeout=timeout)
         except Exception as e:
             if i == retries:
+                print(f"[http] requests 重试耗尽，降级 curl: {e}")
+                try:
+                    q = url
+                    if params:
+                        import urllib.parse
+                        q += "?" + urllib.parse.urlencode(params)
+                    out = subprocess.run(["curl", "-sf", "-m", str(timeout * 2), q],
+                                         capture_output=True, timeout=timeout * 2 + 5)
+                    if out.returncode == 0:
+                        class _R:  # 最小响应壳
+                            text = out.stdout.decode("utf-8", "ignore")
+                            status_code = 200
+                            def json(self): return __import__("json").loads(self.text)
+                        return _R()
+                except Exception as e2:
+                    print(f"[http] curl 兜底也失败: {e2}")
                 raise
             print(f"[http] 重试 {i+1}: {e}")
             time.sleep(2)
