@@ -99,7 +99,28 @@ def _build_insights(data: dict) -> list[str]:
                        "→ 浏览量只是'关注度'不是'销量'，但关注度先于购买出现，"
                        "值得作为选品的候选名单去1688做供给端查重。")
 
-    # 4. 行动建议
+    # 4. 分群信号
+    seg_list = data.get("segments") or []
+    if seg_list:
+        import collections
+        by_iso = collections.defaultdict(list)
+        for s in seg_list:
+            by_iso[s["iso"]].append(s)
+        elder = [(i, seg) for i, segs in by_iso.items() for seg in segs
+                 if seg["segment"].startswith("👵")]
+        if elder:
+            iso, s = max(elder, key=lambda x: x[1]["evidence"].get("65+人口占比%", 0))
+            ins.append(f"👵 老龄化最深的市场：{names.get(iso, iso)}（65+ 占比 "
+                       f"{s['evidence'].get('65+人口占比%')}%）→ 医疗照护、适老产品、陪伴服务的供给缺口最集中，"
+                       "且这是最难被消费降级取消的刚需。")
+        youth = [(c["iso"], c) for c in data.get("countries", []) if c.get("youth")]
+        if youth:
+            iso, c = max(youth, key=lambda x: x[1]["youth"])
+            ins.append(f"🧑 青年就业压力最大的市场：{names.get(iso, iso)}（青年失业率 {c['youth']}%）"
+                       "→ 对应人群的副业工具、求职培训、低门槛创收类产品有真实付费动机——"
+                       "焦虑驱动的付费比兴趣驱动更稳。")
+
+    # 5. 行动建议
     if countries and cats:
         best = data.get("opportunities", [{}])[0]
         ins.append(f"🎯 当前综合排名第1的机会：{names.get(best.get('country',''), best.get('country',''))}"
@@ -140,20 +161,23 @@ def _refresh():
         errors.append("需求热度源（Wikimedia）不可达，品类趋势当前为【演示数据】——"
                       "在自有服务器部署时将自动使用真实数据")
     countries = scoring.score_countries(macro, cci)
+    segments = scoring.build_segments(macro, countries)
     hard_data = _fetch_hard_data()
     if not hard_data:
         errors.append("FRED 生产型硬数据不可用")
     categories = scoring.score_categories(series_map)
     opportunities = scoring.build_opportunities(countries, categories)
+    segments_for_insights = segments
     insights = _build_insights({"countries": countries, "categories": categories,
-                                 "opportunities": opportunities, "hard_data": hard_data,
-                                 "country_names": sources.COUNTRIES, "demo_mode": demo_mode})
+                                "opportunities": opportunities, "hard_data": hard_data,
+                                "country_names": sources.COUNTRIES, "demo_mode": demo_mode,
+                                "macro": macro, "segments": segments_for_insights})
     _state.update(
         data={"macro": macro, "cci": cci, "countries": countries,
               "categories": [{k: v for k, v in c.items() if k != "monthly"} for c in categories],
               "series": series_map, "opportunities": opportunities,
               "country_names": sources.COUNTRIES, "demo_mode": demo_mode,
-              "hard_data": hard_data, "insights": insights},
+              "hard_data": hard_data, "segments": segments, "insights": insights},
         updated=time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime()),
         errors=errors,
     )
