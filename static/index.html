@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>机会雷达 Opportunity Radar</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; margin: 0; }
+  body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+         background: #f5f7fa; color: #1a2233; padding: 24px; }
+  header { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 8px; }
+  h1 { font-size: 22px; }
+  .sub { color: #68738a; font-size: 13px; }
+  .warn { background: #fff6e0; border: 1px solid #f0d090; padding: 6px 12px;
+          border-radius: 8px; font-size: 12px; color: #8a6d1a; display: none; margin-top: 10px;}
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 18px; }
+  .card { background: #fff; border-radius: 14px; padding: 18px;
+          box-shadow: 0 1px 4px rgba(20,30,60,.06); }
+  .card h2 { font-size: 15px; margin-bottom: 12px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; color: #68738a; font-weight: 600; padding: 6px 8px;
+       border-bottom: 1px solid #e6eaf2; }
+  td { padding: 6px 8px; border-bottom: 1px solid #f0f3f8; }
+  .score { font-weight: 700; color: #0a6cff; }
+  .beta-high { color: #16a34a; font-weight: 600; }
+  .beta-low  { color: #dc2626; font-weight: 600; }
+  .badge { background: #eef4ff; color: #0a6cff; border-radius: 999px;
+           padding: 2px 9px; font-size: 12px; }
+  .hint { font-size: 12px; color: #9aa4b8; margin-top: 8px; line-height: 1.6; }
+  button { background: #0a6cff; color: #fff; border: 0; border-radius: 8px;
+           padding: 6px 14px; font-size: 13px; cursor: pointer; }
+  .full { grid-column: 1 / -1; }
+  @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>📡 机会雷达 <span class="sub">Opportunity Radar</span></h1>
+    <div class="sub">宏观动能 × 品类抗萧条属性 × 需求趋势 · 数据源：世界银行 / OECD / Wikimedia Pageviews（免费开放接口）</div>
+  </div>
+  <div style="text-align:right">
+    <button onclick="load(true)">刷新数据</button>
+    <div class="sub" id="updated" style="margin-top:6px"></div>
+  </div>
+</header>
+<div class="warn" id="warn"></div>
+
+<div class="grid">
+  <div class="card">
+    <h2>🌍 各国宏观动能分（0-100）</h2>
+    <table id="macro"></table>
+    <div class="hint">评分 = GDP增速 + 居民消费增速 − 通胀惩罚（通胀超2%部分折半），按组内 min-max 归一。分数高 ≈ 该市场钱包在变大。</div>
+  </div>
+  <div class="card">
+    <h2>📈 品类需求趋势（近12个月 vs 前12个月）</h2>
+    <table id="cat"></table>
+    <div class="hint">需求代理指标：维基百科相关词条浏览量（免费接口），预留 Google Trends 适配器可升级。<b>抗萧条β</b>：绿色=下行期受益，红色=反例对照。</div>
+  </div>
+  <div class="card full">
+    <h2>🎯 机会点矩阵（Top 15）</h2>
+    <table id="opp"></table>
+    <div class="hint">得分 = 宏观动能 × 抗萧条β × 需求趋势。解读方式：高分机会 = <b>钱在变多的市场 × 萧条里反而涨的品类</b>。仅是筛选起点，动手前仍需 1688 供给端查重与预售页验证。</div>
+  </div>
+  <div class="card full">
+    <h2>📉 需求趋势曲线（选取代表性词条月度浏览量）</h2>
+    <canvas id="chart" height="90"></canvas>
+  </div>
+</div>
+
+<script>
+const NAMES = {};
+let chart = null;
+
+function cell(v, cls="") { return `<td class="${cls}">${v ?? "–"}</td>`; }
+
+function renderMacro(d) {
+  document.getElementById("macro").innerHTML =
+    "<tr><th>市场</th><th>宏观分</th><th>GDP增速%</th><th>消费增速%</th><th>通胀%</th></tr>" +
+    d.countries.map(c =>
+      `<tr><td>${NAMES[c.iso] || c.iso}</td>${cell(c.score, "score")}${cell(c.gdp)}${cell(c.cons)}${cell(c.infl)}</tr>`
+    ).join("");
+}
+
+function renderCat(d) {
+  document.getElementById("cat").innerHTML =
+    "<tr><th>品类</th><th>趋势分</th><th>同比%</th><th>β</th><th>备注</th></tr>" +
+    d.categories.map(c =>
+      `<tr><td>${c.name}</td>${cell(c.score, "score")}${cell(c.growth_pct > 0 ? "+" + c.growth_pct : c.growth_pct)}`
+      + `<td class="${c.recess_beta >= .7 ? "beta-high" : "beta-low"}">${c.recess_beta}</td><td style="color:#68738a">${c.note}</td></tr>`
+    ).join("");
+}
+
+function renderOpp(d) {
+  document.getElementById("opp").innerHTML =
+    "<tr><th>#</th><th>机会点</th><th>得分</th><th>宏观分</th><th>需求分</th><th>β</th></tr>" +
+    d.opportunities.slice(0, 15).map((o, i) =>
+      `<tr><td>${i + 1}</td><td><b>${NAMES[o.country] || o.country}</b> × ${o.category} <span class="badge">防御型β=${o.beta}</span></td>`
+      + `${cell(o.score, "score")}${cell(o.macro)}${cell(o.demand)}${cell(o.beta)}</tr>`
+    ).join("");
+}
+
+function renderChart(d) {
+  const keys = d.categories.slice(0, 6).map(c => c.key);
+  const colors = ["#0a6cff", "#16a34a", "#f59e0b", "#dc2626", "#8b5cf6", "#0891b2"];
+  const datasets = keys.map((k, i) => ({
+    label: d.categories.find(c => c.key === k)?.name || k,
+    data: (d.series[k] || []).map(p => p.v),
+    borderColor: colors[i], backgroundColor: "transparent",
+    pointRadius: 1, tension: .3, yAxisID: "y",
+  }));
+  const labels = (d.series[keys[0]] || []).map(p => `${p.t.slice(0,4)}-${p.t.slice(4,6)}`);
+  if (chart) chart.destroy();
+  chart = new Chart(document.getElementById("chart"), {
+    type: "line",
+    data: { labels, datasets },
+    options: {
+      responsive: true,
+      plugins: { legend: { position: "bottom", labels: { boxWidth: 12, font: { size: 11 } } } },
+      scales: { y: { ticks: { font: { size: 10 } } }, x: { ticks: { font: { size: 10 }, maxTicksLimit: 12 } } },
+    },
+  });
+}
+
+async function load(manual) {
+  if (manual) {
+    await fetch("/api/refresh");
+    document.getElementById("updated").textContent = "已触发后台刷新，约1-2分钟后再次查看…";
+    setTimeout(() => location.reload(), 60000);
+    return;
+  }
+  const r = await fetch("/api/dashboard");
+  const d = await r.json();
+  Object.assign(NAMES, d.country_names || {});
+  document.getElementById("updated").textContent = "数据更新于 " + (d.updated || "加载中…");
+  if (d.errors && d.errors.length) {
+    document.getElementById("warn").style.display = "block";
+    document.getElementById("warn").textContent = "⚠ 数据源提示：" + d.errors.join("；");
+  }
+  if (d.demo_mode) {
+    document.getElementById("warn").style.display = "block";
+    document.getElementById("warn").textContent = "⚠ 品类需求数据当前为【演示数据】（真实数据源在本环境不可达）——在自有服务器部署时自动启用真实的 Wikimedia Pageviews 数据";
+  }
+  if (!d.countries || !d.countries.length) {
+    document.getElementById("updated").textContent = "首次抓取中，约1-2分钟后自动刷新…";
+    setTimeout(() => location.reload(), 30000);
+    return;
+  }
+  renderMacro(d); renderCat(d); renderOpp(d); renderChart(d);
+}
+load(false);
+</script>
+</body>
+</html>
