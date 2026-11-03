@@ -59,7 +59,9 @@ CATEGORIES = [
 
 
 def score_countries(macro: dict, cci: dict | None) -> list[dict]:
-    """国家宏观动能分。原始值 -> minmax 归一到 0-100。"""
+    """国家动能分 = GDP增速 + 居民消费增速 − 通胀惩罚 − 就业惩罚。
+    原始值全部随结果输出（前端展示为证据链），minmax 归一到 0-100。
+    cci 参数保留（如接入OECD信心指数可加权），当前默认不影响评分。"""
     rows = []
     for iso, m in macro.items():
         if not m.get("gdp_growth"):
@@ -67,14 +69,23 @@ def score_countries(macro: dict, cci: dict | None) -> list[dict]:
         gdp = m.get("gdp_growth", 0)
         cons = m.get("consumption_growth", gdp)
         infl = m.get("inflation", 2)
-        raw = gdp + cons - max(infl - 2, 0) * 0.5  # 通胀>2%部分折半惩罚
-        rows.append({"iso": iso, "gdp": gdp, "cons": cons, "infl": infl, "raw": raw})
+        unemp = m.get("unemployment", 5)
+        youth = m.get("youth_unemployment", unemp * 2.2)
+        infl_pen = max(infl - 2, 0) * 0.5       # 通胀超2%部分折半惩罚
+        job_pen = max(unemp - 5, 0) * 0.4 + max(youth - 12, 0) * 0.15
+        raw = gdp + cons - infl_pen - job_pen
+        rows.append({"iso": iso, "gdp": gdp, "cons": cons, "infl": infl,
+                     "unemp": unemp, "youth": youth,
+                     "gdp_data_year": m.get("gdp_growth_data_year"),
+                     "unemp_data_year": m.get("unemployment_data_year"),
+                     "raw_raw": round(raw, 2), "raw": raw})
     if not rows:
         return []
     lo, hi = min(r["raw"] for r in rows), max(r["raw"] for r in rows)
     span = (hi - lo) or 1
     for r in rows:
         r["score"] = round((r["raw"] - lo) / span * 100, 1)
+        r["raw"] = round(r["raw"], 2)
     return rows
 
 
