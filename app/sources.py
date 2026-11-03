@@ -25,11 +25,14 @@ COUNTRIES = {
 }
 ISO3 = ";".join(COUNTRIES.keys())  # 注意：世界银行多国用分号分隔
 
-# 世界银行指标：GDP增速 / 居民最终消费增速 / 通胀
+# 世界银行指标：宏观(GDP/消费/通胀) + 民生(失业率/青年失业率)
+# 口径均为官方统计，但存在时滞（失业率通常滞后1-2年），页面上会标注数据年份
 WB_INDICATORS = {
-    "gdp_growth": "NY.GDP.MKTP.KD.ZG",
-    "consumption_growth": "NE.CON.PRVT.KD.ZG",
-    "inflation": "FP.CPI.TOTL.ZG",
+    "gdp_growth": "NY.GDP.MKTP.KD.ZG",           # GDP实际增速 %
+    "consumption_growth": "NE.CON.PRVT.KD.ZG",    # 居民最终消费增速 %
+    "inflation": "FP.CPI.TOTL.ZG",               # CPI通胀 %
+    "unemployment": "SL.UEM.TOTL.ZS",            # 失业率 %（占总劳动力，ILO口径）
+    "youth_unemployment": "SL.UEM.1524.ZS",      # 15-24岁青年失业率 %
 }
 
 
@@ -55,9 +58,11 @@ def fetch_worldbank() -> dict[str, dict[str, Any]]:
         except Exception as e:  # 降级：该指标缺失不致命
             print(f"[worldbank] {name} 获取失败: {e}")
     for iso in list(result):
-        result[iso].pop("gdp_growth_year", None)
-        result[iso].pop("consumption_growth_year", None)
-        result[iso].pop("inflation_year", None)
+        for k in ("gdp_growth", "consumption_growth", "inflation",
+                  "unemployment", "youth_unemployment"):
+            y = result[iso].pop(f"{k}_year", None)
+            if y:
+                result[iso][f"{k}_data_year"] = y  # 保留数据年份作为时效证据
     return result
 
 
