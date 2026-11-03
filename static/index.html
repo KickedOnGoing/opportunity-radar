@@ -47,6 +47,11 @@
 </header>
 <div class="warn" id="warn"></div>
 
+<div class="card" style="grid-column: 1 / -1; border-left: 4px solid #0a6cff;">
+  <h2>💬 白话解读（看不懂数字就从这里开始）</h2>
+  <div id="insights" style="font-size: 14px; line-height: 1.9;"></div>
+</div>
+
 <div class="grid">
   <div class="card">
     <h2>🌍 各国宏观动能分（0-100）</h2>
@@ -173,6 +178,15 @@ function renderChart(d) {
   });
 }
 
+function renderInsights(d) {
+  const el = document.getElementById("insights");
+  if (!d.insights || !d.insights.length) {
+    el.innerHTML = '<span class="sub">解读生成中，约1-2分钟后刷新页面…</span>';
+    return;
+  }
+  el.innerHTML = d.insights.map(t => `<div>${t}</div>`).join("");
+}
+
 async function load(manual) {
   if (manual) {
     await fetch("/api/refresh");
@@ -197,6 +211,7 @@ async function load(manual) {
     setTimeout(() => location.reload(), 30000);
     return;
   }
+  renderInsights(d);
   renderMacro(d); renderCat(d); renderOpp(d); renderHard(d); renderEvidence(d); renderChart(d);
 }
 load(false);
