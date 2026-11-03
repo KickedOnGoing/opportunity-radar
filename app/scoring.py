@@ -111,6 +111,45 @@ def score_categories(series_map: dict[str, list[dict]]) -> list[dict]:
     return rows
 
 
+def build_segments(macro: dict, countries: list[dict]) -> list[dict]:
+    """分群画像：按年龄段切市场，每段给证据数字 + 推断需求。
+    数据限制说明：世界银行开放接口只到 15-64 / 65+ / 15-24 三段，
+    更细的5岁组数据在 UN WPP（无稳定免费API）或付费报告（Euromonitor等）中，
+    这里用三段+多指标交叉（人口结构×失业×消费）做三角验证。"""
+    segs = []
+    for c in countries:
+        m = macro.get(c["iso"], {})
+        wa = m.get("working_age_share")
+        el = m.get("elderly_share")
+        if wa is None:
+            continue
+        # 青年段 15-24
+        youth_unemp = c.get("youth", 0)
+        segs.append({"iso": c["iso"], "segment": "🧑‍🎓 青年段 15-24",
+                     "evidence": {"青年失业率%": youth_unemp, "GDP增速%": c["gdp"],
+                                  "数据年": m.get("youth_unemployment_data_year")},
+                     "needs": ["副业/零工", "技能培训", "性价比消费", "考证/求职服务"],
+                     "reading": ("就业压力大，副业与省钱类需求最硬" if youth_unemp >= 14
+                                 else "就业相对健康，新消费品牌接受度高")})
+        # 中坚段 15-64
+        cons = c.get("cons", 0)
+        segs.append({"iso": c["iso"], "segment": "💼 中坚段 25-54（含在劳动年龄内）",
+                     "evidence": {"劳动年龄占比%": wa, "居民消费增速%": cons,
+                                  "总失业率%": c.get("unemp")},
+                     "needs": ["家庭刚需", "育儿/教育", "居住改善", "防御型保险"],
+                     "reading": ("人口主力+消费在涨，家庭刚需与育儿是基本盘" if cons > 3
+                                 else "消费增速弱，主打'降本增效'与替代性消费")})
+        # 银发段 65+
+        if el is not None:
+            segs.append({"iso": c["iso"], "segment": "👵 银发段 65+",
+                         "evidence": {"65+人口占比%": el},
+                         "needs": ["医疗/慢病管理", "养老照护", "陪伴/适老产品", "传承/资产配置"],
+                         "reading": ("深度老龄化（>14%），银发经济供给缺口大" if el >= 14
+                                     else "老龄化早期，银发需求刚起步" if el >= 7
+                                     else "年轻型社会，银发市场机会有限")})
+    return segs
+
+
 def build_opportunities(countries: list[dict], categories: list[dict]) -> list[dict]:
     """机会矩阵：macro_score × recess_beta × demand_score，取每品类 top3 国家。"""
     opps = []
