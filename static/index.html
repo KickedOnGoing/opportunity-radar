@@ -64,6 +64,10 @@
     <div class="hint">得分 = 宏观动能 × 抗萧条β × 需求趋势。解读方式：高分机会 = <b>钱在变多的市场 × 萧条里反而涨的品类</b>。仅是筛选起点，动手前仍需 1688 供给端查重与预售页验证。</div>
   </div>
   <div class="card full">
+    <h2>🔍 证据链与数据口径（分数怎么来的，以及每个数的局限）</h2>
+    <table id="evidence"></table>
+  </div>
+  <div class="card full">
     <h2>📉 需求趋势曲线（选取代表性词条月度浏览量）</h2>
     <canvas id="chart" height="90"></canvas>
   </div>
@@ -77,9 +81,9 @@ function cell(v, cls="") { return `<td class="${cls}">${v ?? "–"}</td>`; }
 
 function renderMacro(d) {
   document.getElementById("macro").innerHTML =
-    "<tr><th>市场</th><th>宏观分</th><th>GDP增速%</th><th>消费增速%</th><th>通胀%</th></tr>" +
+    "<tr><th>市场</th><th>动能分</th><th>原始分</th><th>GDP增速%</th><th>消费增速%</th><th>通胀%</th><th>失业率%</th><th>青年失业率%</th></tr>" +
     d.countries.map(c =>
-      `<tr><td>${NAMES[c.iso] || c.iso}</td>${cell(c.score, "score")}${cell(c.gdp)}${cell(c.cons)}${cell(c.infl)}</tr>`
+      `<tr><td>${NAMES[c.iso] || c.iso}</td>${cell(c.score, "score")}${cell(c.raw_raw ?? c.raw)}${cell(c.gdp + " (" + (c.gdp_data_year || "?") + ")")}${cell(c.cons)}${cell(c.infl)}${cell(c.unemp)}${cell(c.youth)}</tr>`
     ).join("");
 }
 
@@ -99,6 +103,34 @@ function renderOpp(d) {
       `<tr><td>${i + 1}</td><td><b>${NAMES[o.country] || o.country}</b> × ${o.category} <span class="badge">防御型β=${o.beta}</span></td>`
       + `${cell(o.score, "score")}${cell(o.macro)}${cell(o.demand)}${cell(o.beta)}</tr>`
     ).join("");
+}
+
+function renderEvidence(d) {
+  const ev = [
+    ["国家动能分", "GDP增速 + 居民消费增速 − (通胀−2)%×0.5 − 失业惩罚",
+     "世界银行开放数据 API（官方口径，年度）",
+     "GDP/消费最新到 " + (d.countries?.[0]?.gdp_data_year || "上一年度") + "；失业率通常滞后1-2年",
+     "GDP是结果不是先行；国家层面数字会掩盖城市/群体差异"],
+    ["失业率/青年失业率", "ILO口径，占总劳动力 %（民生核心证据）",
+     "世界银行（源自各国/ILO劳工统计）", "滞后1-2年，统计口径各国不完全可比",
+     "青年失业率高=该市场年轻人消费受抑制、副业需求强——本身就是需求信号"],
+    ["消费者信心", "OECD CCI（>100乐观）",
+     "OECD SDMX API", "接口不可用时本页会明示降级",
+     "信心比GDP更早反映\"敢不敢花钱\"，但属主观调查"],
+    ["品类需求趋势", "维基百科相关词条月度浏览量近12月vs前12月",
+     "Wikimedia Pageviews API（真实数据）或演示数据（明示）",
+     "月度更新",
+     "<b>是关注度代理，不是销量</b>。要更强信号请替换为 Google Trends / 百度指数 / 亚马逊搜索量（sources.py 同名函数替换即可）"],
+    ["招聘数据", "BOSS直聘/智联/Indeed 均无公开API，抓取违反robots且不稳定",
+     "本工具不内置（避免脆弱+法律风险）", "—",
+     "替代方案：① 用青年失业率做劳动力压力代理 ② 需要真实岗位量可手动接入各国统计局月度职位空缺（如美国JOLTS、欧盟Eurostat JVS）"],
+    ["抗萧条β", "0-1经验系数：该品类历史上萧条期的相对韧性",
+     "scoring.py 人工设定，可修改", "随代码更新",
+     "<b>这是主观先验，不是数据</b>——修改 CATEGORIES 即可注入你自己的判断"],
+  ];
+  document.getElementById("evidence").innerHTML =
+    "<tr><th>指标</th><th>计算口径</th><th>来源</th><th>时效</th><th>局限与说明</th></tr>" +
+    ev.map(r => `<tr><td><b>${r[0]}</b></td><td>${r[1]}</td><td>${r[2]}</td><td style="color:#68738a">${r[3]}</td><td style="color:#8a6d1a">${r[4]}</td></tr>`).join("");
 }
 
 function renderChart(d) {
@@ -147,7 +179,7 @@ async function load(manual) {
     setTimeout(() => location.reload(), 30000);
     return;
   }
-  renderMacro(d); renderCat(d); renderOpp(d); renderChart(d);
+  renderMacro(d); renderCat(d); renderOpp(d); renderEvidence(d); renderChart(d);
 }
 load(false);
 </script>
