@@ -74,6 +74,11 @@
     <div class="hint">与GDP/CPI等"汇总统计口径"不同，下面每个数都来自真实个体事件（失业金理赔单）或雇主税务申报记录，是更难注水的生产型数据。美国口径先行为示范（周更），可在 app/sources.py 的 FRED_SERIES 按同一接口扩展各国序列。</div>
   </div>
   <div class="card full">
+    <h2>👥 分群画像（按年龄段切市场：证据数字 → 推断需求）</h2>
+    <table id="segments"></table>
+    <div class="hint">开放数据只能切到 15-24 / 15-64 / 65+ 三段（5岁组细分在付费报告如 Euromonitor 或 UN WPP 中）。解读方法：先看证据列的交叉验证（人口结构×失业×消费），再看推断需求——推断只是假设，落地前必须访谈 20+ 个该群体真人。</div>
+  </div>
+  <div class="card full">
     <h2>🔍 证据链与数据口径（分数怎么来的，以及每个数的局限）</h2>
     <table id="evidence"></table>
   </div>
@@ -187,6 +192,18 @@ function renderInsights(d) {
   el.innerHTML = d.insights.map(t => `<div>${t}</div>`).join("");
 }
 
+function renderSegments(d) {
+  if (!d.segments || !d.segments.length) return;
+  const rows = d.segments.map(s => {
+    const ev = Object.entries(s.evidence).map(([k, v]) => `${k}: <b>${v ?? "?"}</b>`).join("，");
+    const needs = s.needs.map(n => `<span class="badge">${n}</span>`).join(" ");
+    return `<tr><td style="min-width:90px"><b>${NAMES[s.iso] || s.iso}</b></td><td style="min-width:150px">${s.segment}</td>`
+      + `<td>${ev}</td><td>${needs}</td><td style="color:#68738a">${s.reading}</td></tr>`;
+  }).join("");
+  document.getElementById("segments").innerHTML =
+    "<tr><th>市场</th><th>人群段</th><th>证据（真实数据）</th><th>推断需求</th><th>解读</th></tr>" + rows;
+}
+
 async function load(manual) {
   if (manual) {
     await fetch("/api/refresh");
@@ -212,7 +229,7 @@ async function load(manual) {
     return;
   }
   renderInsights(d);
-  renderMacro(d); renderCat(d); renderOpp(d); renderHard(d); renderEvidence(d); renderChart(d);
+  renderMacro(d); renderCat(d); renderOpp(d); renderHard(d); renderSegments(d); renderEvidence(d); renderChart(d);
 }
 load(false);
 </script>
