@@ -55,6 +55,63 @@ def _fetch_hard_data() -> dict:
     return hard
 
 
+def _build_insights(data: dict) -> list[str]:
+    """规则引擎生成白话解读：把数字翻译成人话，每条都回答'所以呢'。"""
+    ins = []
+    names = data.get("country_names", {})
+    countries = sorted(data.get("countries", []), key=lambda c: -c["score"])
+    hard = data.get("hard_data") or {}
+
+    # 1. 宏观层
+    if countries:
+        top3 = [f"{names.get(c['iso'], c['iso'])}({c['score']}分)" for c in countries[:3]]
+        bottom = countries[-1]
+        ins.append(f"💰 钱在哪变多：动能最高的是 {'、'.join(top3)}。"
+                   f"最低的是 {names.get(bottom['iso'], bottom['iso'])}（{bottom['score']}分，"
+                   f"GDP仅{bottom['gdp']}%）。"
+                   f"→ 想找增量市场，优先看前3；法国这类市场只适合卖'省钱替代'类产品。")
+        youth = [c for c in countries if c.get("youth", 0) >= 15]
+        if youth:
+            yl = "、".join(f"{names.get(c['iso'], c['iso'])}({c['youth']}%)" for c in youth)
+            ins.append(f"🧑 青年失业率≥15%的市场：{yl}。"
+                       f"→ 年轻人找工作难的地方，副业工具、性价比消费、技能培训的需求最真实。"
+                       f"这条比GDP更接近真实生活。")
+
+    # 2. 生产型硬数据层
+    if "icsa" in hard:
+        icsa = hard["icsa"]
+        direction = "下降（就业走强）" if icsa["trend_pct"] < 0 else "上升（就业走弱）"
+        ins.append(f"🩺 美国就业体检：每周初请失业金 {icsa['latest']:.0f} 人，近4周比12周前 "
+                   f"{('+' if icsa['trend_pct']>0 else '')}{icsa['trend_pct']}%，{direction}。"
+                   f"→ 这是行政理赔单据、不是调查问卷，是美国消费力的最快温度计。"
+                   f"初请持续上升=美国老百姓钱包在收紧，卖非刚需品要谨慎。")
+
+    # 3. 需求层
+    cats = sorted(data.get("categories", []), key=lambda c: -c["score"])
+    if data.get("demo_mode"):
+        ins.append("⚠️ 品类需求曲线当前是演示数据（本环境访问不到Wikimedia）→ "
+                   "机会点矩阵里'需求分'那一半目前不可用于决策，只看宏观分和β。"
+                   "部署到你自己的电脑/服务器后会自动变成真实数据。")
+    elif cats:
+        rising = "、".join(c["name"] for c in cats[:3] if c["growth_pct"] > 0)
+        if rising:
+            ins.append(f"📈 关注度在真实上涨的品类：{rising}。"
+                       "→ 浏览量只是'关注度'不是'销量'，但关注度先于购买出现，"
+                       "值得作为选品的候选名单去1688做供给端查重。")
+
+    # 4. 行动建议
+    if countries and cats:
+        best = data.get("opportunities", [{}])[0]
+        ins.append(f"🎯 当前综合排名第1的机会：{names.get(best.get('country',''), best.get('country',''))}"
+                   f"×{best.get('category','—')}。但记住分数只是候选名单——"
+                   "动手前的三步验证：① 1688/Amazon搜同款（有没有白牌和品牌卡死价位）"
+                   "② 挑一个做¥5000预售页测试 ③ 算单台利润（售价−成本−渠道费−退货）。"
+                   "任何一步不过，就淘汰，总成本控制在1万以内。")
+    ins.append("📖 阅读顺序：先看'民生温度计'（最真实的数）→ 再看宏观分（钱的增量）"
+               "→ 最后看机会矩阵（候选名单），每一层都比短视频可靠，但都不替代实地验证。")
+    return ins
+
+
 def _refresh():
     t0 = time.time()
     errors = []
@@ -88,12 +145,15 @@ def _refresh():
         errors.append("FRED 生产型硬数据不可用")
     categories = scoring.score_categories(series_map)
     opportunities = scoring.build_opportunities(countries, categories)
+    insights = _build_insights({"countries": countries, "categories": categories,
+                                 "opportunities": opportunities, "hard_data": hard_data,
+                                 "country_names": sources.COUNTRIES, "demo_mode": demo_mode})
     _state.update(
         data={"macro": macro, "cci": cci, "countries": countries,
               "categories": [{k: v for k, v in c.items() if k != "monthly"} for c in categories],
               "series": series_map, "opportunities": opportunities,
               "country_names": sources.COUNTRIES, "demo_mode": demo_mode,
-              "hard_data": hard_data},
+              "hard_data": hard_data, "insights": insights},
         updated=time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime()),
         errors=errors,
     )
