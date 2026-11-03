@@ -37,6 +37,24 @@ def _sample_series(key: str) -> list[dict]:
     return out
 
 
+def _fetch_hard_data() -> dict:
+    """生产型硬数据（FRED行政数据）：真实个体事件/税务记录，非调查问卷。"""
+    hard = {}
+    for key, meta in sources.FRED_SERIES.items():
+        series = sources.fetch_fred(meta["id"], years=2)
+        if not series:
+            continue
+        vs = [p["v"] for p in series]
+        latest_t, latest_v = series[-1]["t"], vs[-1]
+        # 近4周均值 vs 12周前均值 → 短期趋势
+        recent = sum(vs[-4:]) / 4
+        prior = sum(vs[-16:-12]) / 4 if len(vs) >= 16 else recent
+        trend = (recent - prior) / prior * 100 if prior else 0
+        hard[key] = {**meta, "latest": latest_v, "date": latest_t,
+                     "trend_pct": round(trend, 1), "series": series[-52:]}
+    return hard
+
+
 def _refresh():
     t0 = time.time()
     errors = []
@@ -65,13 +83,17 @@ def _refresh():
         errors.append("需求热度源（Wikimedia）不可达，品类趋势当前为【演示数据】——"
                       "在自有服务器部署时将自动使用真实数据")
     countries = scoring.score_countries(macro, cci)
+    hard_data = _fetch_hard_data()
+    if not hard_data:
+        errors.append("FRED 生产型硬数据不可用")
     categories = scoring.score_categories(series_map)
     opportunities = scoring.build_opportunities(countries, categories)
     _state.update(
         data={"macro": macro, "cci": cci, "countries": countries,
               "categories": [{k: v for k, v in c.items() if k != "monthly"} for c in categories],
               "series": series_map, "opportunities": opportunities,
-              "country_names": sources.COUNTRIES, "demo_mode": demo_mode},
+              "country_names": sources.COUNTRIES, "demo_mode": demo_mode,
+              "hard_data": hard_data},
         updated=time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime()),
         errors=errors,
     )
